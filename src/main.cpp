@@ -2,9 +2,12 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <esp_camera.h>
+#include <PubSubClient.h>
 #include "config.h"
 
 WebServer server(80);
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
 
 // Camera pins for ESP32-CAM-MB
 #define PWDN_GPIO_NUM     32
@@ -23,6 +26,14 @@ WebServer server(80);
 #define VSYNC_GPIO_NUM    25
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
+
+// Function to generate unique client ID based on IP address
+String getClientId() {
+  IPAddress ip = WiFi.localIP();
+  char clientId[20];
+  snprintf(clientId, sizeof(clientId), "esp32-cam-%d", ip[3]);
+  return String(clientId);
+}
 
 void setupCamera() {
   camera_config_t config = {
@@ -109,6 +120,27 @@ void handleRoot() {
   );
 }
 
+void reconnectMQTT() {
+  while (!mqttClient.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    String clientId = getClientId();
+    
+    if (mqttClient.connect(clientId.c_str())) {
+      Serial.println("connected");
+      Serial.printf("Client ID: %s\n", clientId.c_str());
+      
+      // Publish initial status
+      String status = "{\"ip\":\"" + WiFi.localIP().toString() + "\",\"status\":\"online\",\"clientId\":\"" + clientId + "\"}";
+      mqttClient.publish("esp32-cams", status.c_str());
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(mqttClient.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   
@@ -130,8 +162,16 @@ void setup() {
   server.on("/", handleRoot);
   server.on("/stream", handleStream);
   server.begin();
+
+  // Setup MQTT
+  mqttClient.setServer(mqtt_server, mqtt_port);
+  reconnectMQTT();
 }
 
 void loop() {
+  if (!mqttClient.connected()) {
+    reconnectMQTT();
+  }
+  mqttClient.loop();
   server.handleClient();
 } 
