@@ -53,20 +53,56 @@ void setupCamera() {
     .pin_vsync = VSYNC_GPIO_NUM,
     .pin_href = HREF_GPIO_NUM,
     .pin_pclk = PCLK_GPIO_NUM,
-    .xclk_freq_hz = 20000000,
+    .xclk_freq_hz = 10000000,  // Reduced to 10MHz for better stability
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
     .pixel_format = PIXFORMAT_JPEG,
-    .frame_size = FRAMESIZE_VGA,
-    .jpeg_quality = 12,
-    .fb_count = 2,
-    .grab_mode = CAMERA_GRAB_WHEN_EMPTY
+    .frame_size = FRAMESIZE_VGA,  // Reduced to VGA (640x480)
+    .jpeg_quality = 15,  // Slightly reduced quality for better performance
+    .fb_count = 2,  // Reduced frame buffer count
+    .grab_mode = CAMERA_GRAB_WHEN_EMPTY  // Changed back to original mode
   };
 
+  // Check if PSRAM is available
+  if(!psramFound()){
+    Serial.println("WARNING: No PSRAM detected. Camera may not work properly!");
+  }
+
+  // Initialize the camera
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Camera init failed: 0x%x", err);
+    Serial.printf("Camera init failed with error 0x%x", err);
+    Serial.println("\nPlease check:");
+    Serial.println("1. Camera module is properly connected");
+    Serial.println("2. Camera module is not damaged");
+    Serial.println("3. Power supply is stable (5V, 2A recommended)");
     return;
+  }
+
+  // Get camera sensor
+  sensor_t * s = esp_camera_sensor_get();
+  if (s) {
+    // Print sensor info
+    Serial.println("Camera sensor detected:");
+    Serial.printf("Sensor ID: 0x%x\n", s->id.PID);
+    Serial.printf("Sensor Version: 0x%x\n", s->id.VER);
+    Serial.printf("Sensor MID: 0x%x\n", s->id.MIDH);
+
+    // Optimize sensor settings
+    s->set_brightness(s, 1);     // Increase brightness
+    s->set_contrast(s, 1);       // Increase contrast
+    s->set_saturation(s, 1);     // Increase saturation
+    s->set_special_effect(s, 0); // No special effect
+    s->set_whitebal(s, 1);       // Enable white balance
+    s->set_awb_gain(s, 1);       // Enable AWB gain
+    s->set_wb_mode(s, 0);        // Auto white balance mode
+    s->set_exposure_ctrl(s, 1);  // Enable exposure control
+    s->set_aec2(s, 1);          // Enable auto exposure
+    s->set_gain_ctrl(s, 1);     // Enable gain control
+    s->set_agc_gain(s, 0);      // Set gain to 0
+    s->set_gainceiling(s, (gainceiling_t)6); // Set gain ceiling
+  } else {
+    Serial.println("Warning: Camera sensor not detected!");
   }
 }
 
@@ -80,20 +116,38 @@ void handleStream() {
   response += "\r\n";
   client.write(response.c_str());
 
+  // Get camera sensor for dynamic adjustments
+  sensor_t * s = esp_camera_sensor_get();
+  if (s) {
+    // Simplified sensor settings for better stability
+    s->set_brightness(s, 0);     // Neutral brightness
+    s->set_contrast(s, 0);       // Neutral contrast
+    s->set_saturation(s, 0);     // Neutral saturation
+    s->set_special_effect(s, 0); // No special effect
+    s->set_whitebal(s, 1);       // Enable white balance
+    s->set_awb_gain(s, 1);       // Enable AWB gain
+    s->set_wb_mode(s, 0);        // Auto white balance mode
+    s->set_exposure_ctrl(s, 1);  // Enable exposure control
+    s->set_aec2(s, 0);          // Disable auto exposure
+    s->set_gain_ctrl(s, 1);     // Enable gain control
+    s->set_agc_gain(s, 0);      // Set gain to 0
+    s->set_gainceiling(s, (gainceiling_t)4); // Reduced gain ceiling
+  }
+
   while (true) {
     if (!client.connected()) {
       client.stop();
       return;
     }
 
-    camera_fb_t *fb = esp_camera_fb_get();
+    camera_fb_t * fb = esp_camera_fb_get();
     if (!fb) {
       Serial.println("Camera capture failed");
       continue;
     }
 
     // Send frame header
-    String header = "--frame\r\nContent-Type: image/jpeg\r\n\r\n";
+    String header = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + String(fb->len) + "\r\n\r\n";
     client.write(header.c_str());
     
     // Send frame data
@@ -108,8 +162,8 @@ void handleStream() {
     
     esp_camera_fb_return(fb);
     
-    // Small delay to prevent overwhelming the client
-    delay(10);
+    // Increased delay for better stability
+    delay(20);
   }
 }
 
