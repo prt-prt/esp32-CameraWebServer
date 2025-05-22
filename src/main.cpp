@@ -197,10 +197,30 @@ void reconnectMQTT() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("\n\n=== ESP32-CAM Boot Sequence ===");
+  
+  // Initial delay to stabilize power
+  Serial.println("Initial power stabilization delay (5s)...");
+  for(int i = 5; i > 0; i--) {
+    Serial.printf("Power stabilizing... %d\n", i);
+    delay(1000);
+  }
   
   // Connect to WiFi
+  Serial.println("Connecting to WiFi...");
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) delay(500);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
+  
+  // Post-WiFi delay to stabilize
+  Serial.println("Post-WiFi connection delay (5s)...");
+  for(int i = 5; i > 0; i--) {
+    Serial.printf("Stabilizing... %d\n", i);
+    delay(1000);
+  }
   
   // Log system info
   Serial.println("\n=== ESP32-CAM System Info ===");
@@ -211,15 +231,36 @@ void setup() {
   Serial.printf("CPU Frequency: %d MHz\n", ESP.getCpuFreqMHz());
   Serial.println("===========================\n");
   
+  // Pre-camera initialization delay
+  Serial.println("Pre-camera initialization delay (5s)...");
+  for(int i = 5; i > 0; i--) {
+    Serial.printf("Preparing camera... %d\n", i);
+    delay(1000);
+  }
+  
   setupCamera();
+  
+  // Post-camera initialization delay
+  Serial.println("Post-camera initialization delay (5s)...");
+  for(int i = 5; i > 0; i--) {
+    Serial.printf("Stabilizing camera... %d\n", i);
+    delay(1000);
+  }
   
   server.on("/", handleRoot);
   server.on("/stream", handleStream);
   server.begin();
+  Serial.println("HTTP server started");
+
+  // Pre-MQTT setup delay
+  Serial.println("Pre-MQTT setup delay (3s)...");
+  delay(3000);
 
   // Setup MQTT
   mqttClient.setServer(mqtt_server, mqtt_port);
   reconnectMQTT();
+  
+  Serial.println("Boot sequence completed successfully");
 }
 
 void loop() {
